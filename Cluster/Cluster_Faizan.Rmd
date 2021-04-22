@@ -1,0 +1,533 @@
+---
+title: "Market Clusters"
+author: "Faizan Khalid Mohsin"
+date: "July 11, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+```
+
+# Original Code
+
+
+```{r library, warning=F}
+
+library(statar)
+library(scales)
+library(ggplot2)
+library(tidyverse)
+library(factoextra)
+library(ggpubr)
+library(knitr)
+library(cluster)
+library(stats)
+```
+
+
+
+```{r }
+
+#reading data
+Jewl_csr <- read_csv("jewelry_customers.csv")
+#exploring head                     
+head(Jewl_csr)
+
+#exploring the data and the features prior clustering
+
+any(is.na(Jewl_csr)) # = FALSE meaning no missing data
+
+# scatter plot visulization based on Age and income with color identifying the saving, very clear clusters 
+Pl1 <- ggplot(Jewl_csr, aes(Age, Income)) +
+  geom_point(aes(color = Savings), alpha= 0.5, size = 3) + 
+  scale_color_gradient(low= "red", high = "green")   
+Pl1
+
+```
+
+
+```{r}
+
+#variation between features
+var(Jewl_csr$Age)
+var(Jewl_csr$Income)
+var(Jewl_csr$SpendingScore)  # there is a need for scaling
+
+```
+
+
+
+```{r}
+
+
+#the function appear to scale & unscale the data properly to original state
+scaled <- scale(Jewl_csr)
+head(scaled, 10)
+#Unscaled <- unscale(Jewl_csr)
+#head(Unscaled, 10)   # correct data unscaled
+
+
+
+```
+
+
+
+```{r}
+#clusters..............
+
+#1. K-means
+
+# determine the number of clusteres by Elbow plot method
+#creating function for wss plot
+
+set.seed(1234)
+# Compute and plot wss for k = 2 to k = 15.
+k.max <- 15
+data <- scaled
+wss <- sapply(1:k.max, 
+              function(k){kmeans(data, k, nstart=50,iter.max = 15 )$tot.withinss})
+wss
+plot(1:k.max, wss,
+     type="b", pch = 19, frame = FALSE, 
+     xlab="Number of clusters K",
+     ylab="Total within-clusters sum of squares")  # number 5 appears to be optimal also consistent with Pl1 plot on original data
+
+km <- kmeans(scaled, 5)
+#autoplot(km,scaled,frame = TRUE)
+km  #examine centers and features of the clusters, centers appears to be diffrent
+
+```
+
+
+
+# My Code
+
+## K-means Clustering
+
+### Summary Discriptions of Clusters
+
+```{r }
+
+jewl_data = Jewl_csr
+jewl_data$cluster = as.factor(km$cluster)
+
+
+
+cluster_summary = jewl_data %>% group_by(cluster) %>% summarise_all(.funs = c(mean="mean", median="median", sd = "sd") )
+
+kable(cluster_summary[, 1:5])
+
+
+
+```
+
+```{r}
+kable(cluster_summary[, c(1, 6:9)])
+```
+
+```{r}
+kable(cluster_summary[, c(1, 10:13)])
+```
+
+
+
+```{r}
+cluster = jewl_data$cluster
+```
+
+
+
+## K-means Clusting Visualizations
+
+
+```{r}
+
+annotate_figure(
+ggarrange(
+ggplot(jewl_data, aes(x = Income, y = SpendingScore)) + geom_point(aes(color = cluster)), 
+ggplot(jewl_data, aes(x = Age, y = SpendingScore)) + geom_point(aes(color = cluster)), 
+nrow  = 1, ncol = 2, common.legend = TRUE, legend = "right"), 
+top = text_grob("Plotting K-Means Clusters"))
+
+
+```
+
+
+```{r}
+annotate_figure(
+ggarrange(
+ggplot(jewl_data, aes(x = Income, y = Savings)) + geom_point(aes(color = cluster)), 
+ggplot(jewl_data, aes(x = Age, y = Savings)) + geom_point(aes(color = cluster)),
+ggplot(jewl_data, aes(x = Savings, y = SpendingScore)) + geom_point(aes(color = cluster)), 
+ggplot(jewl_data, aes(x = Age, y = Income)) + geom_point(aes(color = cluster)),
+nrow  = 2, ncol = 2, common.legend = TRUE, legend = "right"), 
+top = text_grob("Plotting K-Means Clusters"))
+```
+
+
+
+```{r}
+
+library(ggpubr)
+ggscatter(jewl_data, x = "Income", y = "SpendingScore",
+          color = "cluster", palette = "npg",
+          shape = "cluster", ellipse = TRUE, 
+          mean.point = TRUE, star.plot = TRUE,
+          ggtheme = theme_minimal())
+```
+
+
+
+```{r}
+
+# Grouped Scatter plot with marginal density plots
+# ggscatterhist(
+#   jewl_data, x = "Income", y = "SpendingScore",
+#   color = "cluster", size = 5, alpha = 0.6,
+#   palette = get_palette(c("#00AFBB", "#FC4E07"), 5)), 
+#   margin.params = list(fill = "cluster", color = "black", size = 0.2)
+# ) 
+#  
+
+ggscatterhist(
+  jewl_data, x = "Income", y = "SpendingScore",
+  color = "cluster", size = 3, alpha = 0.6,
+  margin.params = list(fill = "cluster", color = "black", size = 0.2)
+  )
+
+```
+
+
+
+```{r}
+jewl_data$cluster = as.numeric(jewl_data$cluster)
+
+fviz_cluster(list(data = jewl_data, cluster = cluster))
+```
+
+
+
+
+#  Hierarchical Clustering
+
+
+
+```{r}
+scaled_jewl_data = as.data.frame(scale(Jewl_csr))
+fviz_nbclust(scaled_jewl_data, FUN = hcut, method = "wss")
+
+```
+
+
+```{r}
+fviz_nbclust(scaled_jewl_data, FUN = hcut, method = "silhouette")
+```
+
+
+```{r}
+gap_stat <- clusGap(scaled_jewl_data, FUN = hcut, nstart = 25, K.max = 10, B = 50)
+fviz_gap_stat(gap_stat)
+
+```
+
+
+
+### Based on wws and gap statistics optimal number of clusters should be 4. However, we will first do Hierarchical Clustering using 5 clusters and then for 4 clusters.
+
+## Hierarchical Clustering using K = 5
+
+
+```{r}
+df = scaled_jewl_data
+
+# methods to assess
+m <- c( "average", "single", "complete", "ward")
+names(m) <- c( "average", "single", "complete", "ward")
+
+# function to compute coefficient
+ac <- function(x) {
+  agnes(df, method = x)$ac
+}
+
+map_dbl(m, ac)
+```
+
+
+
+```{r}
+# Dissimilarity matrix
+d <- dist(df, method = "euclidean")
+
+# Hierarchical clustering using ward method
+hc2 <- hclust(d, method = "ward.D2" )
+```
+
+
+```{r}
+# Cut tree into 4 groups
+sub_grp <- cutree(hc2, k = 5)
+
+# Number of members in each cluster
+table(sub_grp)
+```
+
+
+
+
+```{r}
+jewl_data = jewl_data %>% mutate(h_cluster = sub_grp)
+```
+
+
+
+```{r}
+
+plot(hc2, cex = 0.6)
+rect.hclust(hc2, k = 5, border = 2:5)
+```
+
+
+
+
+### Summary Discriptions of Hierarchical Clusters
+
+```{r }
+
+jewl_data$h_cluster = as.factor(jewl_data$h_cluster)
+
+
+cluster_summary = jewl_data[, c(1:4, 6)] %>% group_by(h_cluster) %>% summarise_all(.funs = c(mean="mean", median="median", sd = "sd") )
+
+kable(cluster_summary[, 1:5])
+
+```
+
+```{r}
+kable(cluster_summary[, c(1, 6:9)])
+```
+
+```{r}
+kable(cluster_summary[, c(1, 10:13)])
+```
+
+
+
+```{r}
+cluster = jewl_data$h_cluster
+```
+
+
+
+## Hierarchical Clustering Visualizations
+
+```{r}
+
+annotate_figure(
+ggarrange(
+ggplot(jewl_data, aes(x = Income, y = SpendingScore)) + geom_point(aes(color = h_cluster)), 
+ggplot(jewl_data, aes(x = Age, y = SpendingScore)) + geom_point(aes(color = h_cluster)), 
+nrow  = 1, ncol = 2, common.legend = TRUE, legend = "right"), 
+top = text_grob("Plotting Hierarchical Clusters"))
+
+
+```
+
+
+```{r}
+annotate_figure(
+ggarrange(
+ggplot(jewl_data, aes(x = Income, y = Savings)) + geom_point(aes(color = h_cluster)), 
+ggplot(jewl_data, aes(x = Age, y = Savings)) + geom_point(aes(color = h_cluster)),
+ggplot(jewl_data, aes(x = Savings, y = SpendingScore)) + geom_point(aes(color = h_cluster)), 
+ggplot(jewl_data, aes(x = Age, y = Income)) + geom_point(aes(color = h_cluster)),
+nrow  = 2, ncol = 2, common.legend = TRUE, legend = "right"), 
+top = text_grob("Plotting Hierarchical Clusters"))
+```
+
+
+```{r}
+
+library(ggpubr)
+ggscatter(jewl_data, x = "Income", y = "SpendingScore",
+          color = "h_cluster", palette = "npg",
+          shape = "h_cluster", ellipse = TRUE, 
+          mean.point = TRUE, star.plot = TRUE,
+          ggtheme = theme_minimal())
+```
+
+
+
+```{r}
+
+# Grouped Scatter plot with marginal density plots
+# ggscatterhist(
+#   jewl_data, x = "Income", y = "SpendingScore",
+#   color = "cluster", size = 5, alpha = 0.6,
+#   palette = get_palette(c("#00AFBB", "#FC4E07"), 5)), 
+#   margin.params = list(fill = "cluster", color = "black", size = 0.2)
+# ) 
+#  
+
+ggscatterhist(
+  jewl_data, x = "Income", y = "SpendingScore",
+  color = "h_cluster", size = 3, alpha = 0.6,
+  margin.params = list(fill = "h_cluster", color = "black", size = 0.2)
+  )
+
+```
+
+
+
+```{r}
+
+jewl_data$h_cluster = as.numeric(jewl_data$h_cluster)
+h_cluster = as.numeric(jewl_data$h_cluster)
+fviz_cluster(list(data = jewl_data, cluster = h_cluster))
+```
+
+
+
+<!-- # Hierarchical Clustering using K = 4 ( 4 Clusters) -->
+
+
+<!-- ```{r} -->
+<!-- # Cut tree into 4 groups -->
+<!-- sub_grp <- cutree(hc2, k = 4) -->
+
+<!-- # Number of members in each cluster -->
+<!-- table(sub_grp) -->
+<!-- ``` -->
+
+
+
+
+<!-- ```{r} -->
+<!-- jewl_data = jewl_data %>% mutate(h_cluster = sub_grp) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r} -->
+<!-- plot(hc2, cex = 0.6) -->
+<!-- rect.hclust(hc2, k = 4, border = 2:5) -->
+<!-- ``` -->
+
+
+
+
+<!-- ### Summary Discriptions of Hierarchical Clusters -->
+
+<!-- ```{r } -->
+
+<!-- jewl_data$h_cluster = as.factor(jewl_data$h_cluster) -->
+
+
+<!-- cluster_summary = jewl_data[, c(1:4, 6)] %>% group_by(h_cluster) %>% summarise_all(.funs = c(mean="mean", median="median", sd = "sd") ) -->
+
+<!-- kable(cluster_summary[, 1:5]) -->
+
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- kable(cluster_summary[, c(1, 6:9)]) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- kable(cluster_summary[, c(1, 10:13)]) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r} -->
+<!-- cluster = jewl_data$h_cluster -->
+<!-- ``` -->
+
+
+
+
+
+<!-- ## Hierarchical Clustering Visualizations -->
+
+
+<!-- ```{r} -->
+
+<!-- annotate_figure( -->
+<!-- ggarrange( -->
+<!-- ggplot(jewl_data, aes(x = Income, y = SpendingScore)) + geom_point(aes(color = h_cluster)),  -->
+<!-- ggplot(jewl_data, aes(x = Age, y = SpendingScore)) + geom_point(aes(color = h_cluster)),  -->
+<!-- nrow  = 1, ncol = 2, common.legend = TRUE, legend = "right"),  -->
+<!-- top = text_grob("Plotting Hierarchical Clusters")) -->
+
+
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- annotate_figure( -->
+<!-- ggarrange( -->
+<!-- ggplot(jewl_data, aes(x = Income, y = Savings)) + geom_point(aes(color = h_cluster)),  -->
+<!-- ggplot(jewl_data, aes(x = Age, y = Savings)) + geom_point(aes(color = h_cluster)), -->
+<!-- ggplot(jewl_data, aes(x = Savings, y = SpendingScore)) + geom_point(aes(color = h_cluster)),  -->
+<!-- ggplot(jewl_data, aes(x = Age, y = Income)) + geom_point(aes(color = h_cluster)), -->
+<!-- nrow  = 2, ncol = 2, common.legend = TRUE, legend = "right"),  -->
+<!-- top = text_grob("Plotting Hierarchical Clusters")) -->
+<!-- ``` -->
+
+
+
+
+<!-- ```{r} -->
+
+<!-- library(ggpubr) -->
+<!-- ggscatter(jewl_data, x = "Income", y = "SpendingScore", -->
+<!--           color = "h_cluster", palette = "npg", -->
+<!--           shape = "h_cluster", ellipse = TRUE,  -->
+<!--           mean.point = TRUE, star.plot = TRUE, -->
+<!--           ggtheme = theme_minimal()) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r} -->
+
+<!-- # Grouped Scatter plot with marginal density plots -->
+<!-- # ggscatterhist( -->
+<!-- #   jewl_data, x = "Income", y = "SpendingScore", -->
+<!-- #   color = "cluster", size = 5, alpha = 0.6, -->
+<!-- #   palette = get_palette(c("#00AFBB", "#FC4E07"), 5)),  -->
+<!-- #   margin.params = list(fill = "cluster", color = "black", size = 0.2) -->
+<!-- # )  -->
+<!-- #   -->
+
+<!-- ggscatterhist( -->
+<!--   jewl_data, x = "Income", y = "SpendingScore", -->
+<!--   color = "h_cluster", size = 3, alpha = 0.6, -->
+<!--   margin.params = list(fill = "h_cluster", color = "black", size = 0.2) -->
+<!--   ) -->
+
+<!-- ``` -->
+
+
+
+<!-- ```{r} -->
+
+<!-- jewl_data$h_cluster = as.numeric(jewl_data$h_cluster) -->
+<!-- h_cluster = as.numeric(jewl_data$h_cluster) -->
+<!-- fviz_cluster(list(data = jewl_data, cluster = h_cluster)) -->
+<!-- ``` -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
